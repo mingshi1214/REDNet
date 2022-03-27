@@ -13,6 +13,12 @@ from utils import AverageMeter
 import matplotlib.pyplot as plt 
 import numpy as np
 
+import gc
+
+gc.collect()
+
+torch.cuda.empty_cache()
+
 cudnn.benchmark = True
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -75,6 +81,7 @@ if __name__ == '__main__':
     val_data_cnt = 0
 
     min_valid_loss = np.inf
+    best = None
 
     for epoch in range(opt.num_epochs):
         epoch_losses = AverageMeter()
@@ -115,28 +122,30 @@ if __name__ == '__main__':
                 val_loss_data += val_losses.avg
                 val_data_cnt += 1
 
-        loss_epoch = loss_data/data_cnt
+        loss_epoch = epoch_losses.avg
         loss_arr.append(loss_epoch)
         print("train loss: ", loss_epoch)
-        
-        val_loss_epoch = val_loss_data/val_data_cnt
+    
+        val_loss_epoch = val_losses.avg
         val_arr.append(val_loss_epoch)
         print("val loss: ", val_loss_epoch)
 
-        if min_valid_loss > valid_loss:
-            torch.save(model.state_dict(), os.path.join(opt.outputs_dir, '{}_weights.pth'.format(opt.arch)))
+        if valid_loss < min_valid_loss:
+            min_valid_loss = valid_loss
+            best = model
 
-        if epoch == opt.num_epochs - 1:
-            loss_accum = np.array(loss_arr)
-            val_loss_accum = np.array(loss_arr)
-            epochs = np.arange(0, epoch + 1)
+    torch.save(best.state_dict(), os.path.join(opt.outputs_dir, '{}_weights.pth'.format(opt.arch)))
+    
+    loss_accum = np.array(loss_arr)
+    val_loss_accum = np.array(val_arr)
+    epochs = np.arange(0, opt.num_epochs)
 
-            fig, ax = plt.subplots()
+    fig, ax = plt.subplots()
 
-            line1 = ax.plot(epochs, loss_accum, label="Train")
-            line2 = ax.plot(epochs, val_loss_accum, label="Validation")
-            leg = ax.legend()
-            plt.xlabel("Epoch")
-            plt.ylabel("Loss")
-            plt.title("Loss Over Epochs")
-            plt.savefig(os.path.join(opt.outputs_dir, 'loss.png'))
+    line1 = ax.plot(epochs, loss_accum, label="Train")
+    line2 = ax.plot(epochs, val_loss_accum, label="Validation")
+    leg = ax.legend()
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.title("Loss Over Epochs {} Batch {}".format(opt.arch, opt.batch_size))
+    plt.savefig(os.path.join(opt.outputs_dir, 'loss.png'))
